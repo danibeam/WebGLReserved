@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Plato Estrella</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/normalize.css" type="text/css">
+    <link rel="stylesheet" href="css/skeleton.css" type="text/css">
+    <link rel="stylesheet" href="css/styles.css" type="text/css">
+    <link rel="stylesheet" href="css/fontello.css">
+
+    <!-- GUI Libraries //-->
+    <script type='text/javascript' src='js/gui/jquery-1.5.1.min.js'></script>
+    <script type='text/javascript' src='js/gui/jquery-ui-1.8.13.custom.min.js'></script> 
+    <script type='text/javascript' src='js/gui/colorpicker.js'></script>
+
+    <!-- Librerias para webgl -->
+    <script type="text/javascript" src="js/lib/gl-matrix.js"></script> 
+    <script type="text/javascript" src="js/lib/webgl-utils.js"></script>
+    <!-- Se ha consultado la documentacion de uso de gl-matrix: http://glmatrix.net/docs/ -->
+
+    <script type="text/javascript" src="js/gestorRecursos.js"></script>  
+    <script type="text/javascript" src="js/arbol/TEntidad.js"></script>
+    <script type="text/javascript" src="js/arbol/TCamara.js"></script>
+    <script type="text/javascript" src="js/arbol/TLuz.js"></script>
+    <script type="text/javascript" src="js/arbol/TMalla.js"></script>
+    <script type="text/javascript" src="js/arbol/TNodo.js"></script>
+    <script type="text/javascript" src="js/arbol/TTransformacion.js"></script>
+    <script type="text/javascript" src="js/arbol/TMotor.js"></script>
+    <script type="text/javascript" src="js/interfazMotor.js"></script>
+
+    <script type="text/javascript">
+    
+
+    function main(){
+
+      /*
+       *
+       * Definiendo la escena
+       *
+       */
+      var canvas = crearEscena();
+      var escena= new TEscena();
+      var gestor= new TGestorRecursos();
+      var fachada = new TFachada(escena,gestor);
+      var arbol = escena.getArbol();
+
+
+    	//valores de la posicion, difusa y especular de la luz
+      var pos1= [1, -3, -3];  
+        
+      var dif1= [1.0, 1.0, 1.0, 1.0];
+  
+      var esp1= [1.0, 1.0, 1.0,1.0];
+
+      //Creamos la luz y le asignamos los valores 
+      var luz = fachada.crearLuz(arbol);
+      fachada.editarLuz(luz,pos1,dif1,esp1); 
+      
+      //Transformaciones de la camara y asignacion de valores
+      var traslaCamara = fachada.crearTraslacion(arbol,[0.0,0.0,10.0]);
+  	  var camara = fachada.crearCamara(traslaCamara);
+  	  fachada.cambiarPerspectiva(camara,45,0.1,100.0);
+
+
+	    // Transformaciones y creacion de la malla
+      var rotacion = fachada.crearRotacion(arbol,[0,0,0]);
+      var traslacion=fachada.crearTraslacion(rotacion,[0.0,-3.0,-15.0]);
+	    var malla = fachada.crearMalla(traslacion,'objetos/comidajoin.json','texturas/comidajoin1.png');
+
+      
+      escena.unir(traslacion,malla);
+      escena.unir(traslaCamara,camara);
+
+
+      //Por ultimo, creamos la clase "interactor" que interactuara con la aplicacion
+      var interactor = new Interactor(camara,malla,document.getElementById("app"),fachada,escena);
+
+
+      // Para actualizar la posicion de la luz
+      // Se llamara en cuanto pulsemos alguna de las teclas AWSD
+      function updatePosLuz()
+      {
+        fachada.editarLuz(luz,[interactor.getPosicionLuz()[0],interactor.getPosicionLuz()[1],interactor.getPosicionLuz()[2]],dif1,esp1);
+      }
+
+  
+      function setMatrixUniforms()
+      {
+        var aux = mat4.create();
+        aux = mat4.identity(aux);
+         
+	      mat4.set(camara.getEntidad().getMatrix(),viewMatrix);
+	      
+
+        // Matriz auxiliar para model view
+        var TMVmatrix = mat4.multiply(viewMatrix, modelMatrix, TMVmatrix);
+         
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, TMVmatrix);
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+          
+          
+          
+        // Definimos la matriz de normales como la inversa de la traspuesta de la modelView
+        var normalMatrix = mat3.create();
+        mat4.toInverseMat3(TMVmatrix, normalMatrix);
+        mat3.transpose(normalMatrix);
+        gl.uniformMatrix3fv(shaderProgram.nMatrixUniform, false, normalMatrix);
+
+      }
+
+      // Esta funcion se ejecuta continuamente, por cada "frame" de ejecucion
+      // Se calculara continuamente la posicion de la camara a traves de la transformacion que se le asigna
+      // Finalmente se dibujara la escena continuamente para refrescar las posiciones de los objetos
+      function tick(){
+
+        window.requestAnimFrame(tick);   
+        updatePosLuz();
+        var aux = mat4.create();
+        aux = mat4.identity(aux);
+        aux = mat4.multiply(aux, camara.getPadre().getEntidad().getMatrix(), mat4.create());
+        aux = mat4.inverse(aux, mat4.identity(mat4.create()));
+        camara.getEntidad().setMatrix(aux);
+	      mat4.set(camara.getEntidad().getMatrix(),viewMatrix);
+        escena.drawEscena();
+      }
+
+      tick();      
+    }
+
+      /*=================================================
+      =            Interaccion con la camara            =
+      =================================================*/
+      
+      
+      function Interactor(camara,malla,canvas,fachada,escena){
+          
+          this.camara = camara;
+          this.malla = malla;
+          this.canvas = canvas;          
+          this.escena = escena;
+
+          this.padre = malla.getPadre();
+          this.posicionInicial = this.padre.getEntidad().getMatrix();
+          this.fachada = fachada;
+          
+          this.pulsando = false;
+          this.dragging = false;
+          this.picking = false;
+          this.x = 0;
+          this.y = 0;
+          this.lastX = 0;
+          this.lastY = 0;
+          this.button = 0; // Boton Izquierdo/derecho del raton
+          this.ctrl = false;
+          this.alt = false; // Tecla Shift (Pruebas)
+          this.key = 0;
+          this.moverZ = 0.0;
+
+          this.posicionLuz = [0.1,-0.1,0.0];
+
+          this.factor = 10.0;
+
+          this.teclasPulsadas = [];
+
+          this.update();
+      }
+
+      Interactor.prototype.getPosicionLuz = function(){
+        return this.posicionLuz;
+      }
+
+      // Coordenadas del plano 2D
+      // Para posicion relativa del raton dentro del canvas
+      Interactor.prototype.get2DCoords = function(ev){
+        var x, y, top = 0, left = 0, obj = this.canvas;
+
+        while (obj && obj.tagName != 'BODY') {
+          top += obj.offsetTop;
+          left += obj.offsetLeft;
+          obj = obj.offsetParent;
+        }
+          
+          left += window.pageXOffset;
+          top  += window.pageYOffset;
+        
+        return {x:x,y:y};
+      }
+
+      /*----------  Eventos de raton  ----------*/
+      /**
+       *
+       * Para los eventos de raton nos basamos en el tutorial -> http://www.jlabstudio.com/webgl/2011/11/webgl-tutorial-11-esferas-matrices-de-rotacion-y-eventos-de-raton/
+       * ademas de algunos capitulos del libro (capitulos 9 y 10) -> http://voxelent.com/html/beginners-guide/chapter_9/ch9_Car_Showroom.html
+       * 
+       */
+      
+
+      Interactor.prototype.onMouseUp = function(ev){
+        this.dragging = false;
+      }
+
+      Interactor.prototype.onMouseDown = function(ev){
+        this.dragging = true;
+        this.lastX = ev.clientX;
+        this.lastY = ev.clientY;
+
+        this.button = ev.button; // Boton Izquierdo/derecho del raton
+        var coordenadas = this.get2DCoords(ev);
+      }
+
+      Interactor.prototype.onMouseMove = function(ev){
+
+        if (!this.dragging) return;
+
+        
+        this.x = ev.clientY;
+        this.y = ev.clientY;
+
+        var dx = this.x - this.lastX;
+        var dy = this.y - this.lastY;        
+
+        if(this.button == 0){ // Pulsando boton izq del raton
+          // Rotar
+          this.rotar(dx,dy);
+        }
+        this.lastX = this.x;
+        this.lastY = this.y;
+      }
+
+      Interactor.prototype.onKeyDown = function(ev){
+        this.key = ev.keyCode;
+        this.teclasPulsadas[ev.keyCode] = true;
+        if(this.key == '16'){
+          //Tecla shift mantenida
+          this.alt = true;
+        }
+        if(this.key == '37'){
+          // Tecla Izquierda 
+          this.padre.getEntidad().traslacion([0.1,0.0,0.0]);
+        }
+        if(this.key == '38'){
+          // Tecla arriba (Subir)
+          this.padre.getEntidad().traslacion([0.0,-0.1,0.0]);
+        }
+        if(this.key == '39'){
+          // Tecla derecha
+          this.padre.getEntidad().traslacion([-0.1,0.0,0.0]);
+        }
+        if(this.key == '40'){
+          // Tecla Abajo (Bajar)
+          this.padre.getEntidad().traslacion([0.0,0.1,0.0]);
+        }
+        if(this.key == '65'){
+          // Tecla A (Luz izquierda)
+          this.posicionLuz[0] += 0.1;
+        }
+        if(this.key == '68'){
+          // Tecla D (Luz derecha)
+          this.posicionLuz[0] -= 0.1;
+        }
+        if(this.key == '83'){
+          if(this.alt){
+            this.posicionLuz[2] -= 0.1;
+          }
+          else{
+            // Tecla S (Luz abajo)
+            this.posicionLuz[1] += 0.1;
+          }
+        }
+        if(this.key == '87'){
+          if(this.alt){
+            this.posicionLuz[2] += 0.1;
+          }
+          else{
+            // Tecla W (Luz arriba)
+            this.posicionLuz[1] -= 0.1;
+          }
+        }
+      }
+
+      Interactor.prototype.onKeyUp = function(ev){
+          this.key = false;
+          this.teclasPulsadas[ev.keyCode] = false;
+          this.pulsando = false;
+          this.alt = false;
+      }
+
+      // Esta funcion se ejecuta todo el rato para registrar cambios sobre la UI
+      Interactor.prototype.update = function(){
+        var self = this;
+        var canvas = this.canvas;
+        var clientX, clientY;
+
+        canvas.onmousedown = function(ev) {
+          self.onMouseDown(ev);
+          }
+
+        canvas.onmouseup = function(ev) {
+          self.onMouseUp(ev);
+          }
+        
+        canvas.onmousemove = function(ev) {
+          self.onMouseMove(ev);
+          }
+        
+        window.onkeydown = function(ev){
+          self.onKeyDown(ev);
+        }
+        
+        window.onkeyup = function(ev){
+          self.onKeyUp(ev);
+        }
+
+
+        /*----------  Eventos de touch  ----------*/
+        // Esta parte se hizo siguiendo el manual acerca de los eventos de touch
+        // proporcionado por el MDN de Mozilla -> https://developer.mozilla.org/en-US/docs/Web/API/Touch_events
+
+        // Evento tocar la pantalla
+        canvas.addEventListener('touchstart', function(e) {
+          // Registramos las coordenadas donde se ha tocado
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        }, false);
+
+        // Evento tocar y arrastrar sobre pantalla
+        canvas.addEventListener('touchmove', function(e) {
+          var deltaX, deltaY;
+
+          // Registra los cambios en las coordenadas X e Y
+          // El primer toque se registra en 'changedTouches[0]'
+          // Comprueba la diferencia de posicion entre el primer toque y el siguiente
+          deltaX = e.changedTouches[0].clientX - clientX;
+          deltaY = e.changedTouches[0].clientY - clientY;
+
+          // Le mandamos los delta a la funcion rotar para que los processe
+          self.rotar(deltaX,deltaY);
+        }, false);
+
+        canvas.addEventListener('touchcancel', function(e){
+          this.dragging = false;
+        }, false);
+
+        // ---------------------Pulsar y mantener botones--------------------
+
+        var temporizador; // Para mantener el boton pulsado durante un tiempo determinado
+
+        document.getElementById("botonArriba").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.moverArriba();}, 5);
+        });
+
+        document.getElementById("botonArriba").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonAbajo").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.moverAbajo();}, 5);
+        });
+
+        document.getElementById("botonAbajo").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonIzquierda").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.moverIzquierda();}, 5);
+        });
+
+        document.getElementById("botonIzquierda").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonDerecha").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.moverDerecha();}, 5);
+        });
+
+        document.getElementById("botonDerecha").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonAcercar").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.acercar();}, 5);
+        });
+
+        document.getElementById("botonAcercar").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonAlejar").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.alejar();}, 5);
+        });
+
+        document.getElementById("botonAlejar").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonRotarArriba").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.rotarArriba();}, 5);
+        });
+
+        document.getElementById("botonRotarArriba").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonRotarAbajo").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.rotarAbajo();}, 5);
+        });
+
+        document.getElementById("botonRotarAbajo").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonRotarIzquierda").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.rotarIzquierda();}, 5);
+        });
+
+        document.getElementById("botonRotarIzquierda").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        document.getElementById("botonRotarDerecha").addEventListener("touchstart", function(){
+          temporizador = setInterval(function(){self.rotarDerecha();}, 5);
+        });
+
+        document.getElementById("botonRotarDerecha").addEventListener("touchend", function(){
+          clearInterval(temporizador);
+        });
+
+        // ---------------------Fin pulsar y mantener botones----------------------
+
+        $(document).ready(function(){
+          $("#botonReset").click(function(){
+            self.resetPosicion();
+          });
+        });
+
+        
+      }
+
+      /*----------  Movimiento  ----------*/
+      Interactor.prototype.moverArriba = function(){
+        this.camara.getPadre().getEntidad().traslacion([0.0,-0.05,0.0]);
+      }
+      Interactor.prototype.moverAbajo = function(){
+        this.camara.getPadre().getEntidad().traslacion([0.0,0.05,0.0]);
+      }
+
+      Interactor.prototype.moverIzquierda = function(){
+        this.camara.getPadre().getEntidad().traslacion([0.05,0.0,0.0]);
+      }
+      Interactor.prototype.moverDerecha = function(){
+        this.camara.getPadre().getEntidad().traslacion([-0.05,0.0,0.0]);
+      }
+
+      Interactor.prototype.acercar = function(){
+        this.camara.getPadre().getEntidad().traslacion([0.0,0.0,-0.05]);
+      }
+      Interactor.prototype.alejar = function(){
+        this.camara.getPadre().getEntidad().traslacion([0.0,0.0,0.05]);
+      }
+      //////////////////////
+      Interactor.prototype.rotarArriba = function(){
+      	this.padre.getEntidad().rotacion([0.5,0,0]);
+      }
+      Interactor.prototype.rotarAbajo = function(){
+      	this.padre.getEntidad().rotacion([-0.5,0,0]);
+      }
+      Interactor.prototype.rotarIzquierda = function(){
+      	this.padre.getEntidad().rotacion([0,0.5,0]);
+      }
+      Interactor.prototype.rotarDerecha = function(){
+      	this.padre.getEntidad().rotacion([0,-0.5,0]);
+      }
+
+      // Funcion reiniciar posicion (reinicia tanto la posicion de la camara como la de la malla)
+      // Malla -> Reiniciar Rotacion
+      // Camara -> Reiniciar Traslacion
+      Interactor.prototype.resetPosicion = function(){
+      	this.padre.getEntidad().reiniciar();
+        this.camara.getPadre().getEntidad().reiniciar();
+      }
+      
+
+      Interactor.prototype.rotar = function(dx, dy){
+        //Llamar a la funcion de rotar camara (con el raton)
+        var deltaAltura = -10.0 /this.canvas.height;
+        var deltaAnchura = -10.0 / this.canvas.width;
+
+        var altura = deltaAltura * dy;
+        var anchura = deltaAnchura * dx; // Acimut (rotacion horizontal)
+
+        // Asignar valores a la rotacion
+        this.malla.getPadre().getEntidad().rotacion([altura,anchura,0.0]);
+      }
+
+      /*=====  End of Interactor ======*/
+
+      
+  </script>
+
+
+
+  <script id="per-fragment-lighting-fs" type="x-shader/x-fragment">
+      precision mediump float;
+
+      varying vec2 vTextureCoord;
+      varying vec3 vTransformedNormal;
+      varying vec4 vPosition;
+      varying vec3 vLighting;
+
+     
+      uniform float uMaterialShininess;
+      uniform bool uUseLighting;
+      uniform bool uUseTextures;
+
+    
+      uniform vec3 uAmbientColor;
+      uniform int uNLights;
+      uniform float uScenePointLights[54];
+      uniform int uNDirectionalLights;
+      uniform float uSceneDirectionalLights[78]; 
+      uniform sampler2D uSampler;
+
+      varying vec4  vFinalColor;
+ 
+      void main(void) {
+       
+          vec4 fragmentColor;
+          if (uUseTextures) 
+          {
+              fragmentColor = vFinalColor * texture2D(uSampler, vTextureCoord);
+          } 
+          
+          else
+          {
+             
+              fragmentColor = vFinalColor;
+          }
+
+          gl_FragColor = fragmentColor;
+
+      }
+
+
+
+  </script>
+
+
+  <script id="per-fragment-lighting-vs" type="x-shader/x-vertex">
+
+  //PARA REALIZAR LA LUZ HEMOS SEGUIDO EL SIGUIENTE EJEMPLO DEL LIBRO DE WEBGL
+  //http://voxelent.com/html/beginners-guide/chapter_3/ch3_Sphere_Phong.html
+
+      attribute vec3 aVertexPosition;
+      attribute vec3 aVertexNormal;
+      attribute vec2 aTextureCoord;
+
+      //Matrices
+      uniform mat4 uMVMatrix;
+      uniform mat4 uPMatrix;
+      uniform mat3 uNMatrix;
+    
+
+      varying vec2 vTextureCoord;
+      varying vec3 vTransformedNormal;
+      varying vec4 vPosition;
+      varying vec3 vLighting;
+
+      uniform vec4 uLightAmbient;      //Luz ambiente
+      uniform vec4 uLightDiffuse;      //Luz difusa
+      uniform vec4 uLightSpecular;     //Luz Especular
+       
+      uniform vec4 uMaterialAmbient;   
+      uniform vec4 uMaterialDiffuse;  
+      uniform vec4 uMaterialSpecular; 
+
+      uniform float uShininess;    //Brillo
+      uniform vec3 uLightDirection;
+
+ 
+      varying vec4 vFinalColor;
+      void main(void) {
+          
+          vec4 vertex = uMVMatrix * vec4(aVertexPosition, 1.0);
+          vec3 N = uNMatrix * aVertexNormal;
+
+          vec3 L = normalize(uLightDirection);
+
+          vec3 directionalLightColor = vec3(1, 1, 1);
+
+          vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+
+          
+          vec3 ambientLight = vec3(0.3, 0.3, 0.3);
+          
+          
+          vTextureCoord = aTextureCoord;
+          
+          vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
+
+
+          float directional = max(dot(N.xyz, directionalVector), 0.0);
+          vLighting = ambientLight + (directionalLightColor * directional);
+
+          //Calculamos el termino de lambert donde tenemos 3 parametros
+          // su formula, la luz ambiente y la intensidad de la luz
+          float lambertTerm = clamp(dot(N,-L),0.35,0.7);
+
+
+          //Calculamos los terminos de ambiente,difusa y especular
+          vec4 Ia = uLightAmbient * uMaterialAmbient;
+          vec4 Id = vec4(0.0,0.0,.0,1.0);
+          vec4 Is = vec4(0.0,0.0,0.0,1.0);
+
+            
+            if(lambertTerm > 0.0){
+              // COLOR FINAL
+              Id = uMaterialDiffuse * uLightDiffuse* lambertTerm;
+
+              vec3 eyeVec = -vec3(vertex.xyz);
+              vec3 E = normalize(eyeVec);
+              vec3 R = reflect(L, N);
+              float specular = pow(max(dot(R, E), 0.0), uShininess);
+    			
+        	    Is = uLightSpecular * uMaterialSpecular * specular; 
+   		   }
+
+   		    //TERMINO FINAL
+          vFinalColor =  Ia + Id + Is;
+          vFinalColor.a = 1.0;
+           
+          gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition,1.0);
+}
+  
+      
+
+  </script>
+  </head>
+
+  <body onload="main();">
+  	<!-- Botones Rotacion -->
+  	  <button class="botonesRotar icon-right-open miFuente" id="botonRotarDerecha"></button>
+      <!-- <i class="icon-circle"></i> -->
+      <button class="botonesRotar icon-left-open miFuente" id="botonRotarIzquierda"></button>
+      <button class="botonesRotar icon-down-open miFuente" id="botonRotarAbajo"></button>
+      <button class="botonesRotar icon-up-open miFuente" id="botonRotarArriba"></button>
+
+	<!-- Botones Mover -->
+      <button class="botonesMover icon-right-open miFuente" id="botonDerecha"></button>
+      <!-- <i class="icon-circle"></i> -->
+      <button class="botonesMover icon-left-open miFuente" id="botonIzquierda"></button>
+      <button class="botonesMover icon-down-open miFuente" id="botonAbajo"></button>
+      <button class="botonesMover icon-up-open miFuente" id="botonArriba"></button>
+      <button class="botonesMover icon-plus-squared miFuente" id="botonAcercar"></button>
+      <button class="botonesMover icon-minus-squared miFuente" id="botonAlejar"></button>
+
+      <button class="botonReset" id="botonReset">Reset</button>
+
+      <canvas id="app"></canvas>
+      <div class="panel">
+      	<div class="titulo" style="float:left; margin-left: -15px;"><h3>Rotar</h3></div>
+      	<div class="titulo"><h3>Mover</h3></div>
+      </div>
+  </body>
+
+</html>

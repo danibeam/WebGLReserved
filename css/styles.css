@@ -1,0 +1,121 @@
+html,body{
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+   /*  position: fixed; 
+    overflow-y: scroll; */
+    overflow: hidden;
+}
+.miFuente{
+    font-family: fontello;
+    /* font-size: 4.5em; */
+    background: transparent;
+    outline: none;
+    border: 0;
+}
+#container{
+	position: relative;
+	width: 100%;
+}
+
+canvas{
+	width: 100%;
+	height: 70%;
+    margin-bottom: -7px;
+	/* min-height: 400px; */
+}
+video {
+	display: none;
+}
+
+.panel{
+    background-color: #303030FF;
+    margin: 0;
+    padding: 5%;
+    width: 100%;
+    height: 30%;
+    border-top: 7px solid #23C1DBFF;
+    color: white;
+    text-align: center;
+}
+.titulo{
+    width: 40%;
+    display: inline-block;
+}
+
+/* --------BOTONES------ */
+    .botonReset{
+        color: white;
+        font-size: 1.5em;
+        position: absolute;
+        top:80%;
+        left:40%; 
+
+        background: transparent;
+        outline: none;
+        padding: 5px;
+        border: 2px solid #23C1DBFF;
+    }
+    .icon-circle, .icon-down-open, .icon-left-open, .icon-minus-squared, .icon-plus-squared, .icon-right-open, .icon-up-open{
+        z-index:2;
+        position:absolute;
+        color: white;
+        font-size: 1.5em;
+    }
+    /* .icon-circle:hover, .icon-down-open:hover, .icon-left-open:hover, .icon-minus-squared:hover, .icon-plus-squared:hover, .icon-right-open:hover, .icon-up-open:hover{
+        color: skyblue;
+    } */
+        
+        
+        /* .icon-circle{    
+            top:550px;
+            left:360px;    
+        } */
+
+        .botonesRotar.icon-right-open{
+            top:83%;
+            left:22%;  
+            width: 50px; 
+        }
+        .botonesRotar.icon-left-open{    
+            top:83%;
+            left:8%;   
+        }
+        .botonesRotar.icon-down-open{    
+            top:87%;
+            left:15.5%;    
+        }
+        .botonesRotar.icon-up-open{   
+            top:78.5%;
+            left:15.5%;    
+        }
+
+        /* */
+
+        .botonesMover.icon-right-open{
+            top:83%;
+            right:12.5%;  
+            width: 50px; 
+        }
+        .botonesMover.icon-left-open{    
+            top:83%;
+            right:27%;   
+        }
+        .botonesMover.icon-down-open{    
+            top:87%;
+            right:20%;    
+        }
+        .botonesMover.icon-up-open{   
+            top:78.5%;
+            right:20%;    
+        }
+        .botonesMover.icon-minus-squared{    
+            top:89%;
+            right:5%;  
+        }
+        .botonesMover.icon-plus-squared{    
+            top:80%;
+            right:5%;   
+        }
+
